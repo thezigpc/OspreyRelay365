@@ -1,0 +1,29 @@
+# Build output
+bin/
+obj/
+
+# Publish output (compiled releases — build these locally or via CI)
+publish/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.rsuser
+
+# NuGet
+packages/
+*.nupkg
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# Rider
+.idea/
+*.sln.iml
+
+# OS
+Thumbs.db
+.DS_Store
