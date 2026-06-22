@@ -39,6 +39,14 @@ public class ConfigManager
 
         if (!string.IsNullOrEmpty(Config.SmarthostPasswordEncrypted))
             Config.SmarthostPassword = Decrypt(Config.SmarthostPasswordEncrypted);
+
+        foreach (var rule in Config.SuffixRules)
+            if (!string.IsNullOrEmpty(rule.SmarthostOverridePasswordEncrypted))
+                rule.SmarthostOverridePassword = Decrypt(rule.SmarthostOverridePasswordEncrypted);
+
+        foreach (var rule in Config.FileRules)
+            if (!string.IsNullOrEmpty(rule.SmarthostOverridePasswordEncrypted))
+                rule.SmarthostOverridePassword = Decrypt(rule.SmarthostOverridePasswordEncrypted);
     }
 
     public void Save(RelayConfig config)
@@ -54,6 +62,14 @@ public class ConfigManager
 
         if (!string.IsNullOrEmpty(config.SmarthostPassword))
             config.SmarthostPasswordEncrypted = Encrypt(config.SmarthostPassword);
+
+        foreach (var rule in config.SuffixRules)
+            if (!string.IsNullOrEmpty(rule.SmarthostOverridePassword))
+                rule.SmarthostOverridePasswordEncrypted = Encrypt(rule.SmarthostOverridePassword);
+
+        foreach (var rule in config.FileRules)
+            if (!string.IsNullOrEmpty(rule.SmarthostOverridePassword))
+                rule.SmarthostOverridePasswordEncrypted = Encrypt(rule.SmarthostOverridePassword);
 
         var json = JsonSerializer.Serialize(config, JsonOptions);
         File.WriteAllText(ConfigPath, json);

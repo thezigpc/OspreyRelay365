@@ -214,6 +214,19 @@ public class RoutingEngine
                 MatchSource      = $"ExplicitRule:{rule.ToAddress}"
             };
 
+        if (rule.DestinationType == FileDestinationType.SmarthostRelay)
+            return new RouteDecision
+            {
+                Type             = FileDestinationType.SmarthostRelay,
+                MatchedToAddress = toAddr,
+                SmarthostOverride = rule.UseGlobalSmarthost ? null : new SmarthostConfig(
+                    Host: rule.SmarthostOverrideHost, Port: rule.SmarthostOverridePort,
+                    Tls: rule.SmarthostOverrideTls, Username: rule.SmarthostOverrideUsername,
+                    Password: rule.SmarthostOverridePassword,
+                    UseOriginalFrom: true, FallbackSenderEmail: cfg.FallbackSenderEmail),
+                MatchSource = $"ExplicitRule:{rule.ToAddress}"
+            };
+
         return new RouteDecision
         {
             Type                 = rule.DestinationType,
@@ -235,6 +248,20 @@ public class RoutingEngine
     private static RouteDecision BuildSuffixDecision(
         SuffixRule rule, SuffixMatch match, RelayConfig cfg)
     {
+        if (rule.DestinationType == FileDestinationType.SmarthostRelay)
+            return new RouteDecision
+            {
+                Type             = FileDestinationType.SmarthostRelay,
+                MatchedToAddress = match.MatchedToAddress,
+                ToBaseDomain     = rule.BaseDomain,
+                SmarthostOverride = rule.UseGlobalSmarthost ? null : new SmarthostConfig(
+                    Host: rule.SmarthostOverrideHost, Port: rule.SmarthostOverridePort,
+                    Tls: rule.SmarthostOverrideTls, Username: rule.SmarthostOverrideUsername,
+                    Password: rule.SmarthostOverridePassword,
+                    UseOriginalFrom: true, FallbackSenderEmail: cfg.FallbackSenderEmail),
+                MatchSource = $"SuffixRule:{rule.Suffix}.{rule.BaseDomain}[Smarthost]"
+            };
+
         // OneDrive user: explicit override on rule, else resolved from address
         var oneDriveUser = !string.IsNullOrWhiteSpace(rule.OneDriveUser)
             ? rule.OneDriveUser

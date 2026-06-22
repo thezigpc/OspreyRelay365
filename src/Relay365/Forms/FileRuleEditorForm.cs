@@ -37,6 +37,7 @@ public class FileRuleEditorForm : Form
     private RadioButton _rdoTypeRelay = null!;
     private RadioButton _rdoTypeOneDrive = null!;
     private RadioButton _rdoTypeSharePoint = null!;
+    private RadioButton _rdoTypeSmarthost = null!;
 
     // Relay
     private TextBox _txtRelayVia = null!;
@@ -74,6 +75,13 @@ public class FileRuleEditorForm : Form
     private Panel _pnlRelayDest = null!;
     private Panel _pnlOneDriveDest = null!;
     private Panel _pnlSpDest = null!;
+    private Panel _pnlSmarthostDest = null!;
+    private CheckBox _chkSmarthostUseGlobal = null!;
+    private TextBox _txtSmarthostHostOverride = null!;
+    private NumericUpDown _nudSmarthostPortOverride = null!;
+    private ComboBox _cboSmarthostTlsOverride = null!;
+    private TextBox _txtSmarthostUserOverride = null!;
+    private TextBox _txtSmarthostPassOverride = null!;
 
     // Resolved SP data
     private string _resolvedSiteId = "";
@@ -182,13 +190,15 @@ public class FileRuleEditorForm : Form
 
         // ── Destination type ──────────────────────────────────────────────────
         BoldLabel(_scroll, "Destination:", lx, y); y += 24;
-        _rdoTypeRelay      = Rdo(_scroll, "Email Relay",  lx,      y);
+        _rdoTypeRelay      = Rdo(_scroll, "Email Relay",  lx,       y);
         _rdoTypeOneDrive   = Rdo(_scroll, "OneDrive",     lx + 110, y);
         _rdoTypeSharePoint = Rdo(_scroll, "SharePoint",   lx + 210, y);
+        _rdoTypeSmarthost  = Rdo(_scroll, "Smarthost",    lx + 310, y);
         _rdoTypeRelay.Checked = true;
         _rdoTypeRelay.CheckedChanged      += (_, _) => UpdateDestVisibility();
         _rdoTypeOneDrive.CheckedChanged   += (_, _) => UpdateDestVisibility();
         _rdoTypeSharePoint.CheckedChanged += (_, _) => UpdateDestVisibility();
+        _rdoTypeSmarthost.CheckedChanged  += (_, _) => UpdateDestVisibility();
         y += 30;
 
         // ── Relay destination ─────────────────────────────────────────────────
@@ -213,9 +223,15 @@ public class FileRuleEditorForm : Form
         BuildSharePointPanel();
         _scroll.Controls.Add(_pnlSpDest);
 
+        // ── Smarthost destination ─────────────────────────────────────────────
+        _pnlSmarthostDest = new Panel { Location = new Point(lx, y), Width = w, Visible = false };
+        BuildSmarthostDestPanel();
+        _scroll.Controls.Add(_pnlSmarthostDest);
+
         y += Math.Max(
             _pnlRelayDest.Height,
-            Math.Max(_pnlOneDriveDest.Height, _pnlSpDest.Height)) + 8;
+            Math.Max(_pnlOneDriveDest.Height,
+            Math.Max(_pnlSpDest.Height, _pnlSmarthostDest.Height))) + 8;
 
         // We'll position overrides below. Because SP panel height varies, we use
         // a placeholder that gets updated in UpdateDestVisibility.
@@ -357,6 +373,84 @@ public class FileRuleEditorForm : Form
         _pnlSpDest.Height = y;
     }
 
+    private void BuildSmarthostDestPanel()
+    {
+        int y = 0;
+
+        _chkSmarthostUseGlobal = new CheckBox
+        {
+            Text = "Use global smarthost settings (configured in Settings → Smarthost Failover)",
+            Location = new Point(0, y), AutoSize = true,
+            Font = new Font("Segoe UI", 9), Checked = true
+        };
+        _chkSmarthostUseGlobal.CheckedChanged += (_, _) => UpdateSmarthostOverrideFields();
+        _pnlSmarthostDest.Controls.Add(_chkSmarthostUseGlobal);
+        y += 26;
+
+        var hint = new Label
+        {
+            Text = "Mail matching this rule is always delivered via smarthost — not as a failover.\n" +
+                   "Useful for departments or devices that must bypass Microsoft 365.",
+            Location = new Point(0, y), AutoSize = false, Width = 570, Height = 34,
+            ForeColor = Color.DimGray, Font = new Font("Segoe UI", 8.5f)
+        };
+        _pnlSmarthostDest.Controls.Add(hint);
+        y += 42;
+
+        Lbl(_pnlSmarthostDest, "Host (IP or hostname):", 0, y); y += 18;
+        _txtSmarthostHostOverride = Txt(_pnlSmarthostDest, 0, y, 380,
+            placeholder: "e.g. relay.company.com  or  192.168.1.100");
+        y += 28;
+
+        Lbl(_pnlSmarthostDest, "Port:", 0, y);
+        Lbl(_pnlSmarthostDest, "TLS:", 110, y);
+        y += 18;
+        _nudSmarthostPortOverride = new NumericUpDown
+        {
+            Location = new Point(0, y), Width = 90,
+            Minimum = 1, Maximum = 65535, Value = 587,
+            Font = new Font("Segoe UI", 9)
+        };
+        _pnlSmarthostDest.Controls.Add(_nudSmarthostPortOverride);
+        _cboSmarthostTlsOverride = new ComboBox
+        {
+            Location = new Point(110, y), Width = 160,
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Font = new Font("Segoe UI", 9)
+        };
+        _cboSmarthostTlsOverride.Items.AddRange(new object[] { "None", "STARTTLS (Recommended)", "SSL/TLS" });
+        _cboSmarthostTlsOverride.SelectedIndex = 1;
+        _pnlSmarthostDest.Controls.Add(_cboSmarthostTlsOverride);
+        y += 32;
+
+        Lbl(_pnlSmarthostDest, "Username  (leave blank for unauthenticated relay):", 0, y); y += 18;
+        _txtSmarthostUserOverride = Txt(_pnlSmarthostDest, 0, y, 340);
+        y += 28;
+
+        Lbl(_pnlSmarthostDest, "Password:", 0, y); y += 18;
+        _txtSmarthostPassOverride = new TextBox
+        {
+            Location = new Point(0, y), Width = 340,
+            UseSystemPasswordChar = true,
+            Font = new Font("Segoe UI", 9)
+        };
+        _pnlSmarthostDest.Controls.Add(_txtSmarthostPassOverride);
+        y += 28;
+
+        _pnlSmarthostDest.Height = y;
+        UpdateSmarthostOverrideFields();
+    }
+
+    private void UpdateSmarthostOverrideFields()
+    {
+        bool useGlobal = _chkSmarthostUseGlobal?.Checked ?? true;
+        if (_txtSmarthostHostOverride != null)  _txtSmarthostHostOverride.Enabled  = !useGlobal;
+        if (_nudSmarthostPortOverride != null)  _nudSmarthostPortOverride.Enabled  = !useGlobal;
+        if (_cboSmarthostTlsOverride  != null)  _cboSmarthostTlsOverride.Enabled   = !useGlobal;
+        if (_txtSmarthostUserOverride != null)  _txtSmarthostUserOverride.Enabled  = !useGlobal;
+        if (_txtSmarthostPassOverride != null)  _txtSmarthostPassOverride.Enabled  = !useGlobal;
+    }
+
     // ── Rebuild on mode switch ────────────────────────────────────────────────
 
     private void RebuildScroll()
@@ -389,7 +483,13 @@ public class FileRuleEditorForm : Form
                 fromSender: _editSuffix.FromSenderHandling,
                 filenameTemplate: _editSuffix.FilenameTemplate,
                 subjectDelimiter: _editSuffix.SubjectDelimiter,
-                enabled: _editSuffix.Enabled);
+                enabled: _editSuffix.Enabled,
+                useGlobalSmarthost: _editSuffix.UseGlobalSmarthost,
+                smarthostHost: _editSuffix.SmarthostOverrideHost,
+                smarthostPort: _editSuffix.SmarthostOverridePort,
+                smarthostTls: _editSuffix.SmarthostOverrideTls,
+                smarthostUser: _editSuffix.SmarthostOverrideUsername,
+                smarthostPass: _editSuffix.SmarthostOverridePassword);
         }
         else if (_editRecipient != null)
         {
@@ -408,7 +508,13 @@ public class FileRuleEditorForm : Form
                 fromSender: _editRecipient.FromSenderHandling,
                 filenameTemplate: _editRecipient.FilenameTemplate,
                 subjectDelimiter: _editRecipient.SubjectDelimiter,
-                enabled: _editRecipient.Enabled);
+                enabled: _editRecipient.Enabled,
+                useGlobalSmarthost: _editRecipient.UseGlobalSmarthost,
+                smarthostHost: _editRecipient.SmarthostOverrideHost,
+                smarthostPort: _editRecipient.SmarthostOverridePort,
+                smarthostTls: _editRecipient.SmarthostOverrideTls,
+                smarthostUser: _editRecipient.SmarthostOverrideUsername,
+                smarthostPass: _editRecipient.SmarthostOverridePassword);
         }
     }
 
@@ -418,11 +524,23 @@ public class FileRuleEditorForm : Form
         string folderPath, bool? useSubfolder, SaveWhat? saveWhat,
         FromSenderHandling fromSender,
         string? filenameTemplate, string? subjectDelimiter,
-        bool enabled)
+        bool enabled,
+        bool useGlobalSmarthost = true, string smarthostHost = "",
+        int smarthostPort = 587, SmarthostTls smarthostTls = SmarthostTls.StartTls,
+        string smarthostUser = "", string smarthostPass = "")
     {
         _rdoTypeRelay.Checked      = type == FileDestinationType.EmailRelay;
         _rdoTypeOneDrive.Checked   = type == FileDestinationType.OneDrive;
         _rdoTypeSharePoint.Checked = type == FileDestinationType.SharePoint;
+        if (_rdoTypeSmarthost != null)
+            _rdoTypeSmarthost.Checked = type == FileDestinationType.SmarthostRelay;
+
+        if (_chkSmarthostUseGlobal != null) _chkSmarthostUseGlobal.Checked = useGlobalSmarthost;
+        if (_txtSmarthostHostOverride != null) _txtSmarthostHostOverride.Text = smarthostHost;
+        if (_nudSmarthostPortOverride != null) _nudSmarthostPortOverride.Value = Math.Clamp(smarthostPort, 1, 65535);
+        if (_cboSmarthostTlsOverride  != null) _cboSmarthostTlsOverride.SelectedIndex = (int)smarthostTls;
+        if (_txtSmarthostUserOverride != null) _txtSmarthostUserOverride.Text = smarthostUser;
+        if (_txtSmarthostPassOverride != null) _txtSmarthostPassOverride.Text = smarthostPass;
 
         if (_txtRelayVia != null)     _txtRelayVia.Text     = relayVia;
         if (_txtOneDriveUser != null) _txtOneDriveUser.Text = oneDriveUser;
@@ -476,25 +594,27 @@ public class FileRuleEditorForm : Form
 
     private void UpdateDestVisibility()
     {
-        bool isRelay = _rdoTypeRelay?.Checked ?? true;
-        bool isOD    = _rdoTypeOneDrive?.Checked ?? false;
-        bool isSp    = _rdoTypeSharePoint?.Checked ?? false;
+        bool isRelay     = _rdoTypeRelay?.Checked ?? true;
+        bool isOD        = _rdoTypeOneDrive?.Checked ?? false;
+        bool isSp        = _rdoTypeSharePoint?.Checked ?? false;
+        bool isSmarthost = _rdoTypeSmarthost?.Checked ?? false;
 
-        if (_pnlRelayDest != null)    _pnlRelayDest.Visible    = isRelay;
+        if (_pnlRelayDest    != null) _pnlRelayDest.Visible    = isRelay;
         if (_pnlOneDriveDest != null) _pnlOneDriveDest.Visible = isOD;
-        if (_pnlSpDest != null)       _pnlSpDest.Visible       = isSp;
+        if (_pnlSpDest       != null) _pnlSpDest.Visible       = isSp;
+        if (_pnlSmarthostDest != null) _pnlSmarthostDest.Visible = isSmarthost;
 
         // Reposition controls below the active destination panel
-        int activeHeight = isRelay ? (_pnlRelayDest?.Height ?? 50)
-                         : isOD   ? (_pnlOneDriveDest?.Height ?? 80)
-                                  : (_pnlSpDest?.Height ?? 280);
+        int activeHeight = isRelay     ? (_pnlRelayDest?.Height     ?? 50)
+                         : isOD       ? (_pnlOneDriveDest?.Height   ?? 80)
+                         : isSmarthost ? (_pnlSmarthostDest?.Height ?? 200)
+                                       : (_pnlSpDest?.Height        ?? 280);
 
         int newY = _overrideSectionStartY + activeHeight + 8;
         RepositionOverrides(newY);
 
-        // Grey out file-storage-only overrides when Email Relay is the destination.
-        // The controls retain their values so switching back to OneDrive/SharePoint restores them.
-        bool fs = !isRelay;
+        // Grey out file-storage-only overrides when Email Relay or Smarthost is the destination.
+        bool fs = !isRelay && !isSmarthost;
         void SetPair(CheckBox? chk, Control? sub)
         {
             if (chk == null) return;
@@ -675,6 +795,7 @@ public class FileRuleEditorForm : Form
     {
         var destType = _rdoTypeOneDrive.Checked   ? FileDestinationType.OneDrive
                      : _rdoTypeSharePoint.Checked ? FileDestinationType.SharePoint
+                     : _rdoTypeSmarthost.Checked  ? FileDestinationType.SmarthostRelay
                                                   : FileDestinationType.EmailRelay;
 
         bool? subfolder = _chkOverrideSubfolder.Checked ? _chkSubfolderValue.Checked : null;
@@ -729,7 +850,13 @@ public class FileRuleEditorForm : Form
                 SaveWhat       = saveWhat,
                 FromSenderHandling = fromSender,
                 FilenameTemplate = filenameTemplate,
-                SubjectDelimiter = subjectDelimiter
+                SubjectDelimiter = subjectDelimiter,
+                UseGlobalSmarthost         = _chkSmarthostUseGlobal?.Checked ?? true,
+                SmarthostOverrideHost      = _txtSmarthostHostOverride?.Text.Trim() ?? "",
+                SmarthostOverridePort      = (int)(_nudSmarthostPortOverride?.Value ?? 587),
+                SmarthostOverrideTls       = (SmarthostTls)(_cboSmarthostTlsOverride?.SelectedIndex ?? 1),
+                SmarthostOverrideUsername  = _txtSmarthostUserOverride?.Text.Trim() ?? "",
+                SmarthostOverridePassword  = _txtSmarthostPassOverride?.Text ?? "",
             };
         }
         else
@@ -758,7 +885,13 @@ public class FileRuleEditorForm : Form
                 SaveWhat       = saveWhat,
                 FromSenderHandling = fromSender,
                 FilenameTemplate = filenameTemplate,
-                SubjectDelimiter = subjectDelimiter
+                SubjectDelimiter = subjectDelimiter,
+                UseGlobalSmarthost         = _chkSmarthostUseGlobal?.Checked ?? true,
+                SmarthostOverrideHost      = _txtSmarthostHostOverride?.Text.Trim() ?? "",
+                SmarthostOverridePort      = (int)(_nudSmarthostPortOverride?.Value ?? 587),
+                SmarthostOverrideTls       = (SmarthostTls)(_cboSmarthostTlsOverride?.SelectedIndex ?? 1),
+                SmarthostOverrideUsername  = _txtSmarthostUserOverride?.Text.Trim() ?? "",
+                SmarthostOverridePassword  = _txtSmarthostPassOverride?.Text ?? "",
             };
         }
 

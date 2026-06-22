@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Relay365.Core.Config;
 
 // ── Global mode ───────────────────────────────────────────────────────────────
@@ -16,7 +18,17 @@ public enum NoMatchBehavior
 }
 
 // ── File storage options ──────────────────────────────────────────────────────
-public enum FileDestinationType { EmailRelay, OneDrive, SharePoint }
+public enum FileDestinationType { EmailRelay, OneDrive, SharePoint, SmarthostRelay }
+
+/// <summary>
+/// Resolved smarthost connection parameters passed through RouteDecision so MessageProcessor
+/// can deliver without re-reading config. Null SmarthostOverride on a SmarthostRelay decision
+/// means "use the global smarthost settings from RelayConfig".
+/// </summary>
+public record SmarthostConfig(
+    string Host, int Port, SmarthostTls Tls,
+    string Username, string Password,
+    bool UseOriginalFrom, string FallbackSenderEmail);
 
 public enum FileConflictBehavior { Rename, Replace, Fail }
 
@@ -87,6 +99,15 @@ public class SuffixRule
     public string? SubjectDelimiter { get; set; }          // null = use global default
     public string? FilenameSpaceReplacement { get; set; }  // null = use global default
 
+    // Smarthost routing — only used when DestinationType = SmarthostRelay
+    public bool UseGlobalSmarthost { get; set; } = true;
+    public string SmarthostOverrideHost { get; set; } = "";
+    public int SmarthostOverridePort { get; set; } = 587;
+    public SmarthostTls SmarthostOverrideTls { get; set; } = SmarthostTls.StartTls;
+    public string SmarthostOverrideUsername { get; set; } = "";
+    public string SmarthostOverridePasswordEncrypted { get; set; } = "";
+    [JsonIgnore] public string SmarthostOverridePassword { get; set; } = "";
+
     // V2 placeholder — subject-line sub-routing within this suffix rule
     // public List<SubjectRoutingRule> SubjectRules { get; set; } = new();
 }
@@ -127,6 +148,15 @@ public class RecipientFileRule
     public string? SubjectDelimiter { get; set; }          // null = use global default
     public string? FilenameSpaceReplacement { get; set; }  // null = use global default
 
+    // Smarthost routing — only used when DestinationType = SmarthostRelay
+    public bool UseGlobalSmarthost { get; set; } = true;
+    public string SmarthostOverrideHost { get; set; } = "";
+    public int SmarthostOverridePort { get; set; } = 587;
+    public SmarthostTls SmarthostOverrideTls { get; set; } = SmarthostTls.StartTls;
+    public string SmarthostOverrideUsername { get; set; } = "";
+    public string SmarthostOverridePasswordEncrypted { get; set; } = "";
+    [JsonIgnore] public string SmarthostOverridePassword { get; set; } = "";
+
     // V2 placeholder — subject-line sub-routing
     // public List<SubjectRoutingRule> SubjectRules { get; set; } = new();
 }
@@ -161,6 +191,9 @@ public class RouteDecision
     public string SubjectDelimiter { get; init; } = " ";  // resolved: rule override or global default
     public string FilenameSpaceReplacement { get; init; } = ""; // resolved: rule override or global default
     public string ToBaseDomain { get; init; } = "";       // SuffixRule.BaseDomain; empty for non-suffix routes
+
+    // Smarthost — null = use global config from RelayConfig; populated only for SmarthostRelay
+    public SmarthostConfig? SmarthostOverride { get; init; }
 
     // Diagnostics
     public string MatchSource { get; init; } = "";

@@ -695,7 +695,9 @@ public class FileRoutingRulesForm : Form
         var item = new ListViewItem(suffixDisplay) { Tag = r };
         item.SubItems.Add(r.BaseDomain);
         item.SubItems.Add(r.DestinationType.ToString());
-        item.SubItems.Add(r.FolderPath);
+        item.SubItems.Add(r.DestinationType == FileDestinationType.SmarthostRelay
+            ? (r.UseGlobalSmarthost ? "(global smarthost)" : r.SmarthostOverrideHost)
+            : r.FolderPath);
         item.SubItems.Add(r.Enabled ? "✓" : "—");
         return item;
     }
@@ -704,9 +706,14 @@ public class FileRoutingRulesForm : Form
     {
         var item = new ListViewItem(r.ToAddress) { Tag = r };
         item.SubItems.Add(r.DestinationType.ToString());
-        item.SubItems.Add(r.DestinationType == FileDestinationType.EmailRelay
-            ? (string.IsNullOrWhiteSpace(r.RelayVia) ? "(passthrough)" : r.RelayVia)
-            : $"{r.SiteUrl}{r.FolderPath}");
+        item.SubItems.Add(r.DestinationType switch
+        {
+            FileDestinationType.EmailRelay =>
+                string.IsNullOrWhiteSpace(r.RelayVia) ? "(passthrough)" : r.RelayVia,
+            FileDestinationType.SmarthostRelay =>
+                r.UseGlobalSmarthost ? "(global smarthost)" : r.SmarthostOverrideHost,
+            _ => $"{r.SiteUrl}{r.FolderPath}"
+        });
         item.SubItems.Add(r.Enabled ? "✓" : "—");
         return item;
     }

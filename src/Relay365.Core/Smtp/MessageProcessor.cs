@@ -100,6 +100,23 @@ public class MessageProcessor
                     }
                     break;
 
+                case FileDestinationType.SmarthostRelay:
+                    var globalCfg = _configManager.Config;
+                    var shCfg = decision.SmarthostOverride ?? new SmarthostConfig(
+                        globalCfg.SmarthostHost, globalCfg.SmarthostPort, globalCfg.SmarthostTls,
+                        globalCfg.SmarthostUsername, globalCfg.SmarthostPassword,
+                        globalCfg.SmarthostUseOriginalFrom, globalCfg.FallbackSenderEmail);
+
+                    if (string.IsNullOrWhiteSpace(shCfg.Host))
+                        throw new InvalidOperationException(
+                            "Smarthost route matched but no host is configured. " +
+                            "Set a host on the rule or configure the global smarthost in Settings.");
+
+                    await new SmtpSmarthostSender(_configManager, _logger).SendAsync(email, shCfg, ct);
+                    _logger.Success($"Smarthost relay: {email.EnvelopeFrom} → " +
+                                    $"{string.Join(",", email.EnvelopeTo)} via {shCfg.Host}:{shCfg.Port}");
+                    break;
+
                 case FileDestinationType.OneDrive:
                 case FileDestinationType.SharePoint:
                     await _fileStorer.StoreAsync(email, decision, ct);
