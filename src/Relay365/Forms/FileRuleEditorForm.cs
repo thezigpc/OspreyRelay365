@@ -1118,7 +1118,8 @@ public class FileRuleEditorForm : Form
             var mailSender = new GraphMailSender(_configManager, _logger);
             var fileStorer = new GraphFileStorer(_configManager, mailSender, _logger);
             var query      = _txtSiteSearch.Text.Trim();
-            if (string.IsNullOrWhiteSpace(query)) query = "*";
+            // Blank query → SearchSitesAsync uses GET /sites?$top=500 (no search param)
+            // which reliably returns real team sites. search=* only surfaces system entries.
 
             _siteSearchResults = await fileStorer.SearchSitesAsync(query, default);
             _cboSiteSearchResults.Items.Clear();

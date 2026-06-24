@@ -300,7 +300,11 @@ public class GraphFileStorer
         string query, CancellationToken ct)
     {
         var token = await _tokenSource.GetAccessTokenAsync(ct);
-        var url   = $"{GraphBase}/sites?search={Uri.EscapeDataString(query)}";
+        // Blank query → enumerate all sites (no search param). Using search=* only surfaces
+        // system/designer entries on some tenants and misses real /sites/ paths entirely.
+        var url = string.IsNullOrWhiteSpace(query)
+            ? $"{GraphBase}/sites?$top=500"
+            : $"{GraphBase}/sites?search={Uri.EscapeDataString(query)}";
 
         using var req = new HttpRequestMessage(HttpMethod.Get, url);
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
@@ -316,8 +320,17 @@ public class GraphFileStorer
         {
             var displayName = item.TryGetProperty("displayName", out var dn) ? dn.GetString() ?? "" : "";
             var webUrl      = item.TryGetProperty("webUrl",      out var wu) ? wu.GetString() ?? "" : "";
-            if (!string.IsNullOrWhiteSpace(webUrl))
-                results.Add((displayName.Length > 0 ? displayName : webUrl, webUrl));
+            if (string.IsNullOrWhiteSpace(webUrl)) continue;
+
+            // Keep only real team/communication sites. Designer, contentstorage, portals,
+            // personal OneDrive, and root sites are excluded by this allowlist.
+            if (!Uri.TryCreate(webUrl, UriKind.Absolute, out var uri)) continue;
+            if (uri.Host.Contains("-my.", StringComparison.OrdinalIgnoreCase)) continue;
+            var path = uri.AbsolutePath;
+            if (!path.StartsWith("/sites/", StringComparison.OrdinalIgnoreCase) &&
+                !path.StartsWith("/teams/", StringComparison.OrdinalIgnoreCase)) continue;
+
+            results.Add((displayName.Length > 0 ? displayName : webUrl, webUrl));
         }
         return results;
     }
