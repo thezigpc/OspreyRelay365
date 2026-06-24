@@ -119,6 +119,7 @@ public class RoutingRule
     public SaveWhat? SaveWhat { get; set; }
     public NoAttachmentBehavior? NoAttachmentBehavior { get; set; }
     public FromSenderHandling FromSenderHandling { get; set; } = FromSenderHandling.Ignore;
+    public bool? SaveEmbeddedImages { get; set; }   // null = use global default
     public string? FilenameTemplate { get; set; }
     public string? SubjectDelimiter { get; set; }
     public string? FilenameSpaceReplacement { get; set; }
@@ -228,6 +229,7 @@ public class RouteDecision
     public SaveWhat SaveWhat { get; init; } = SaveWhat.AttachmentsOnly;
     public NoAttachmentBehavior NoAttachmentBehavior { get; init; } = NoAttachmentBehavior.SaveAsEml;
     public FromSenderHandling FromSenderHandling { get; init; } = FromSenderHandling.Ignore;
+    public bool SaveEmbeddedImages { get; init; } = false;
 
     // Path/filename variable context
     public string MatchedToAddress { get; init; } = "";   // To: address that matched

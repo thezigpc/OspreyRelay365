@@ -268,16 +268,9 @@ public class FileRoutingRulesForm : Form
             var initial = string.IsNullOrWhiteSpace(_txtUnroutedLocalPath.Text)
                 ? Core.Config.ConfigManager.GetConfigDir()
                 : _txtUnroutedLocalPath.Text;
-            // UseDescriptionForTitle forces the modern Vista-style (IFileOpenDialog) picker
-            // which is stable; the old SHBrowseForFolder dialog crashes on some Win11 configs.
-            using var dlg = new FolderBrowserDialog
-            {
-                Description          = "Select unrouted email folder",
-                UseDescriptionForTitle = true,
-                SelectedPath         = Directory.Exists(initial) ? initial : ""
-            };
-            if (dlg.ShowDialog(this) == DialogResult.OK)
-                _txtUnroutedLocalPath.Text = dlg.SelectedPath;
+            using var picker = new PathPickerDialog("Select Unrouted Folder", initial, folderOnly: true);
+            if (picker.ShowDialog(this) == DialogResult.OK && picker.SelectedFolder != null)
+                _txtUnroutedLocalPath.Text = picker.SelectedFolder;
         };
         scroll.Controls.AddRange(new Control[] { _txtUnroutedLocalPath, btnBrowse });
         y += 32;

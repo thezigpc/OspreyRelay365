@@ -4,6 +4,7 @@ obj/
 
 # Publish output (compiled releases — build these locally or via CI)
 publish/
+publish-fdd/
 
 # Visual Studio
 .vs/

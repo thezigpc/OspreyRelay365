@@ -64,6 +64,8 @@ public class FileRuleEditorForm : Form
     private CheckBox _chkSubfolderValue = null!;
     private CheckBox _chkOverrideFromSender = null!;
     private ComboBox _cboFromSender = null!;
+    private CheckBox _chkOverrideSaveEmbeddedImages = null!;
+    private CheckBox _chkSaveEmbeddedImagesValue = null!;
     private CheckBox _chkOverrideFilenameTemplate = null!;
     private TextBox _txtFilenameTemplate = null!;
     private CheckBox _chkOverrideSubjectDelimiter = null!;
@@ -283,6 +285,12 @@ public class FileRuleEditorForm : Form
         _cboFromSender.SelectedIndex = 0;
         _chkOverrideFromSender.CheckedChanged += (_, _) => _cboFromSender.Enabled = _chkOverrideFromSender.Checked;
         _scroll.Controls.Add(_cboFromSender);
+        y += 28;
+
+        _chkOverrideSaveEmbeddedImages = Chk(_scroll, "Override save embedded images:", lx, y);
+        _chkSaveEmbeddedImagesValue = new CheckBox { Text = "Enabled", Location = new Point(lx + 235, y), AutoSize = true, Enabled = false };
+        _chkOverrideSaveEmbeddedImages.CheckedChanged += (_, _) => _chkSaveEmbeddedImagesValue.Enabled = _chkOverrideSaveEmbeddedImages.Checked;
+        _scroll.Controls.Add(_chkSaveEmbeddedImagesValue);
         y += 28;
 
         _chkOverrideFilenameTemplate = Chk(_scroll, "Override filename template:", lx, y);
@@ -796,36 +804,37 @@ public class FileRuleEditorForm : Form
         if (_chkCaseInsensitive != null) _chkCaseInsensitive.Checked = r.CaseInsensitive;
 
         PopulateDestination(
-            type:               r.DestinationType,
-            relayVia:           r.RelayVia,
-            oneDriveUser:       r.OneDriveUser,
-            siteUrl:            r.SiteUrl,
-            siteId:             r.SiteId,
-            libName:            r.LibraryName,
-            driveId:            r.LibraryDriveId,
-            folderPath:         r.FolderPath,
-            useSubfolder:       r.UsePerEmailSubfolder,
-            saveWhat:           r.SaveWhat,
-            fromSender:         r.FromSenderHandling,
-            filenameTemplate:   r.FilenameTemplate,
-            subjectDelimiter:   r.SubjectDelimiter,
-            enabled:            r.Enabled,
-            useGlobalSmarthost: r.UseGlobalSmarthost,
-            smarthostHost:      r.SmarthostOverrideHost,
-            smarthostPort:      r.SmarthostOverridePort,
-            smarthostTls:       r.SmarthostOverrideTls,
-            smarthostUser:      r.SmarthostOverrideUsername,
-            smarthostPass:      r.SmarthostOverridePassword,
-            stripSuffixFromTo:  r.StripSuffixFromTo,
-            deliverToOverride:  r.DeliverToOverride,
-            rewriteToHeader:    r.RewriteToHeader);
+            type:                 r.DestinationType,
+            relayVia:             r.RelayVia,
+            oneDriveUser:         r.OneDriveUser,
+            siteUrl:              r.SiteUrl,
+            siteId:               r.SiteId,
+            libName:              r.LibraryName,
+            driveId:              r.LibraryDriveId,
+            folderPath:           r.FolderPath,
+            useSubfolder:         r.UsePerEmailSubfolder,
+            saveWhat:             r.SaveWhat,
+            fromSender:           r.FromSenderHandling,
+            saveEmbeddedImages:   r.SaveEmbeddedImages,
+            filenameTemplate:     r.FilenameTemplate,
+            subjectDelimiter:     r.SubjectDelimiter,
+            enabled:              r.Enabled,
+            useGlobalSmarthost:   r.UseGlobalSmarthost,
+            smarthostHost:        r.SmarthostOverrideHost,
+            smarthostPort:        r.SmarthostOverridePort,
+            smarthostTls:         r.SmarthostOverrideTls,
+            smarthostUser:        r.SmarthostOverrideUsername,
+            smarthostPass:        r.SmarthostOverridePassword,
+            stripSuffixFromTo:    r.StripSuffixFromTo,
+            deliverToOverride:    r.DeliverToOverride,
+            rewriteToHeader:      r.RewriteToHeader);
     }
 
     private void PopulateDestination(
         FileDestinationType type, string relayVia, string oneDriveUser,
         string siteUrl, string siteId, string libName, string driveId,
         string folderPath, bool? useSubfolder, SaveWhat? saveWhat,
-        FromSenderHandling fromSender,
+        FromSenderHandling fromSender, bool? saveEmbeddedImages,
         string? filenameTemplate, string? subjectDelimiter,
         bool enabled,
         bool useGlobalSmarthost = true, string smarthostHost = "",
@@ -885,6 +894,11 @@ public class FileRuleEditorForm : Form
             _chkOverrideFromSender.Checked = true;
             _cboFromSender.SelectedItem    = fromSender.ToString();
         }
+        if (saveEmbeddedImages.HasValue)
+        {
+            _chkOverrideSaveEmbeddedImages.Checked = true;
+            _chkSaveEmbeddedImagesValue.Checked    = saveEmbeddedImages.Value;
+        }
         if (!string.IsNullOrWhiteSpace(filenameTemplate))
         {
             _chkOverrideFilenameTemplate.Checked = true;
@@ -929,10 +943,11 @@ public class FileRuleEditorForm : Form
             chk.Enabled = fs;
             if (sub != null) sub.Enabled = fs && chk.Checked;
         }
-        SetPair(_chkOverrideSaveWhat,         _cboSaveWhat);
-        SetPair(_chkOverrideSubfolder,        _chkSubfolderValue);
-        SetPair(_chkOverrideFilenameTemplate, _txtFilenameTemplate);
-        SetPair(_chkOverrideSubjectDelimiter, _txtSubjectDelimiter);
+        SetPair(_chkOverrideSaveWhat,           _cboSaveWhat);
+        SetPair(_chkOverrideSubfolder,          _chkSubfolderValue);
+        SetPair(_chkOverrideSaveEmbeddedImages, _chkSaveEmbeddedImagesValue);
+        SetPair(_chkOverrideFilenameTemplate,   _txtFilenameTemplate);
+        SetPair(_chkOverrideSubjectDelimiter,   _txtSubjectDelimiter);
     }
 
     private void RepositionOverrides(int startY)
@@ -970,6 +985,9 @@ public class FileRuleEditorForm : Form
         FromSenderHandling fromSender = _chkOverrideFromSender.Checked
             ? Enum.Parse<FromSenderHandling>(_cboFromSender.SelectedItem?.ToString() ?? "Ignore")
             : FromSenderHandling.Ignore;
+        bool? saveEmbeddedImages = _chkOverrideSaveEmbeddedImages.Checked
+            ? _chkSaveEmbeddedImagesValue.Checked
+            : (bool?)null;
         string? filenameTemplate = _chkOverrideFilenameTemplate.Checked
             ? _txtFilenameTemplate.Text.Trim()
             : null;
@@ -1067,6 +1085,7 @@ public class FileRuleEditorForm : Form
             UsePerEmailSubfolder     = subfolder,
             SaveWhat                 = saveWhat,
             FromSenderHandling       = fromSender,
+            SaveEmbeddedImages       = saveEmbeddedImages,
             FilenameTemplate         = filenameTemplate,
             SubjectDelimiter         = subjectDelimiter,
 

@@ -11,13 +11,14 @@ public class AppRegistrationManager
     private const string RelayTag = "365Relay";
 
     private const string MailSendRoleId         = "b633e1c5-b582-4048-a93e-9f11b44c7e96";
+    private const string MailReadWriteRoleId     = "e2a3a72e-5f79-4c64-b1b1-878b674786c6";
     private const string FilesReadWriteAllRoleId = "75359482-378d-4052-8f01-80520e7db3cd";
     private const string SitesReadWriteAllRoleId = "9492366f-7969-46a4-8d15-ed1a20078fff";
     private const string GraphAppId              = "00000003-0000-0000-c000-000000000000";
 
     private static readonly string[] AllRelayRoleIds =
     {
-        MailSendRoleId, FilesReadWriteAllRoleId, SitesReadWriteAllRoleId
+        MailSendRoleId, MailReadWriteRoleId, FilesReadWriteAllRoleId, SitesReadWriteAllRoleId
     };
 
     private readonly GraphServiceClient _adminClient;
@@ -98,6 +99,7 @@ public class AppRegistrationManager
                     ResourceAccess = new List<ResourceAccess>
                     {
                         new() { Id = Guid.Parse(MailSendRoleId),          Type = "Role" },
+                        new() { Id = Guid.Parse(MailReadWriteRoleId),      Type = "Role" },
                         new() { Id = Guid.Parse(FilesReadWriteAllRoleId), Type = "Role" },
                         new() { Id = Guid.Parse(SitesReadWriteAllRoleId), Type = "Role" }
                     }
@@ -161,7 +163,7 @@ public class AppRegistrationManager
 
     private async Task GrantAdminConsentAsync(string spId, CancellationToken ct)
     {
-        _logger.Info("Granting admin consent for Mail.Send, Files.ReadWrite.All, Sites.ReadWrite.All…");
+        _logger.Info("Granting admin consent for Mail.Send, Mail.ReadWrite, Files.ReadWrite.All, Sites.ReadWrite.All…");
         var graphSpId = await GetGraphServicePrincipalIdAsync(ct);
 
         foreach (var roleId in AllRelayRoleIds)

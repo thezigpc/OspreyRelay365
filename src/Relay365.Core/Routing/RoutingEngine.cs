@@ -321,9 +321,14 @@ public class RoutingEngine
             };
 
         // File storage (OneDrive / SharePoint)
-        var oneDriveUser = rule.Mode == MatchMode.DomainSuffix
-            ? (!string.IsNullOrWhiteSpace(rule.OneDriveUser) ? rule.OneDriveUser : match.ResolvedUser)
-            : (!string.IsNullOrWhiteSpace(rule.OneDriveUser) ? rule.OneDriveUser : null);
+        // Blank UPN → use the best available resolved address for all match modes.
+        // DomainSuffix: ResolvedUser = localpart@baseDomain (suffix stripped).
+        // All others:   MatchedToAddress = the envelope To: that triggered the match.
+        var oneDriveUser = !string.IsNullOrWhiteSpace(rule.OneDriveUser)
+            ? rule.OneDriveUser
+            : (!string.IsNullOrWhiteSpace(match.ResolvedUser)
+                ? match.ResolvedUser
+                : match.MatchedToAddress);
 
         return new RouteDecision
         {
@@ -335,6 +340,7 @@ public class RoutingEngine
             SaveWhat             = rule.SaveWhat ?? cfg.DefaultSaveWhat,
             NoAttachmentBehavior = rule.NoAttachmentBehavior ?? cfg.DefaultNoAttachmentBehavior,
             FromSenderHandling   = rule.FromSenderHandling,
+            SaveEmbeddedImages   = rule.SaveEmbeddedImages ?? cfg.DefaultSaveEmbeddedImages,
             MatchedToAddress     = match.MatchedToAddress,
             ToBaseDomain         = rule.BaseDomain,
             CapturedSuffix       = match.CapturedSuffix,

@@ -133,7 +133,7 @@ public class MainForm : Form
         _btnConfigure      = ToolBtn("Configure App");
         _btnSettings       = ToolBtn("Settings…");
         _btnRouting        = ToolBtn("Email Routes…");
-        _btnFileRules      = ToolBtn("File Rules…");
+        _btnFileRules      = ToolBtn("Rules…");
         _btnUnrouted       = ToolBtn("Unrouted…");
         _btnServiceInstall = ToolBtn("Install Service");
         _btnServiceStart   = ToolBtn("Start Service");

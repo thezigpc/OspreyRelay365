@@ -17,6 +17,7 @@ public class GraphMailSender
 {
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(90) };
     private const string GraphBase = "https://graph.microsoft.com/v1.0";
+    private const int LargeMailThresholdBytes = 3_500_000; // ~3.5 MB — above this use draft+send path
 
     // MimeKit defaults to Unix LF (\n). Graph requires RFC-2822 CRLF (\r\n).
     private static readonly FormatOptions SmtpFormat = CreateSmtpFormat();
@@ -114,11 +115,18 @@ public class GraphMailSender
             _logger.Debug($"--- MIME START ---\n{preview}\n--- MIME END ---");
         }
 
+        bool isLarge = sendBytes.Length > LargeMailThresholdBytes;
+        if (isLarge)
+            _logger.Info($"Large message ({sendBytes.Length / 1024:N0} KB > {LargeMailThresholdBytes / 1024:N0} KB): using Graph draft path");
+
         // ── Explicit relay-via mailbox ────────────────────────────────────────
         if (!string.IsNullOrWhiteSpace(decision.RelayVia))
         {
             _logger.Info($"Relay rule → {decision.RelayVia}");
-            await SendMimeAsync(sendBytes, decision.RelayVia, cfg.SaveToSentItems, ct);
+            if (isLarge)
+                await SendViaDraftAsync(mime, decision.RelayVia, cfg.SaveToSentItems, ct);
+            else
+                await SendMimeAsync(sendBytes, decision.RelayVia, cfg.SaveToSentItems, ct);
             _logger.Success($"Relayed (rule): {originalFrom} → {recips}");
             return;
         }
@@ -126,27 +134,44 @@ public class GraphMailSender
         // ── From: passthrough ─────────────────────────────────────────────────
         if (!string.IsNullOrWhiteSpace(originalFrom))
         {
-            var (ok, status, graphError) = await TrySendMimeAsync(
-                sendBytes, originalFrom, cfg.SaveToSentItems, ct);
+            bool passthroughOk;
+            if (isLarge)
+            {
+                var (okDraft, statusDraft, errDraft) =
+                    await TrySendViaDraftAsync(mime, originalFrom, cfg.SaveToSentItems, ct);
+                passthroughOk = okDraft;
+                if (!okDraft)
+                {
+                    _logger.Debug($"Draft passthrough failed HTTP {statusDraft}: {errDraft}");
+                    bool noMailbox = statusDraft == 404 || IsNoMailboxError(errDraft);
+                    if (!noMailbox)
+                        throw new InvalidOperationException(
+                            $"Graph rejected draft from '{originalFrom}' (HTTP {statusDraft}): {errDraft}");
+                    _logger.Info($"'{originalFrom}' has no tenant mailbox ({statusDraft}), switching to fallback sender");
+                }
+            }
+            else
+            {
+                var (ok, status, graphError) =
+                    await TrySendMimeAsync(sendBytes, originalFrom, cfg.SaveToSentItems, ct);
+                passthroughOk = ok;
+                if (!ok)
+                {
+                    _logger.Debug($"Passthrough send failed HTTP {status}: {graphError}");
+                    bool noMailbox = status == 404
+                        || (status == 400 && IsNoMailboxError(graphError));
+                    if (!noMailbox)
+                        throw new InvalidOperationException(
+                            $"Graph rejected sendMail from '{originalFrom}' (HTTP {status}): {graphError}");
+                    _logger.Info($"'{originalFrom}' has no tenant mailbox ({status}), switching to fallback sender");
+                }
+            }
 
-            if (ok)
+            if (passthroughOk)
             {
                 _logger.Success($"Relayed: {originalFrom} → {recips}");
                 return;
             }
-
-            _logger.Debug($"Passthrough send failed HTTP {status}: {graphError}");
-
-            // Treat as "no mailbox" only when Graph says the user/mailbox isn't found.
-            // Other errors (permissions, MIME issues) should surface immediately.
-            bool noMailbox = status == 404
-                || (status == 400 && IsNoMailboxError(graphError));
-
-            if (!noMailbox)
-                throw new InvalidOperationException(
-                    $"Graph rejected sendMail from '{originalFrom}' (HTTP {status}): {graphError}");
-
-            _logger.Info($"'{originalFrom}' has no tenant mailbox ({status}), switching to fallback sender");
         }
 
         // ── Fallback sender ───────────────────────────────────────────────────
@@ -154,8 +179,24 @@ public class GraphMailSender
             throw new InvalidOperationException(
                 "From: address is not a tenant mailbox and no fallback sender is configured.");
 
-        var fallbackBytes = RebuildForFallback(sendBytes, originalFrom, cfg.FallbackSenderEmail);
-        await SendMimeAsync(fallbackBytes, cfg.FallbackSenderEmail, cfg.SaveToSentItems, ct);
+        if (isLarge)
+        {
+            // Reload from the normalized CRLF bytes so MimeContent streams are fresh
+            var fallbackMime = MimeMessage.Load(new MemoryStream(sendBytes));
+            fallbackMime.From.Clear();
+            fallbackMime.From.Add(new MailboxAddress(cfg.FallbackSenderEmail, cfg.FallbackSenderEmail));
+            if (!string.IsNullOrWhiteSpace(originalFrom))
+            {
+                fallbackMime.ReplyTo.Clear();
+                fallbackMime.ReplyTo.Add(new MailboxAddress(originalFrom, originalFrom));
+            }
+            await SendViaDraftAsync(fallbackMime, cfg.FallbackSenderEmail, cfg.SaveToSentItems, ct);
+        }
+        else
+        {
+            var fallbackBytes = RebuildForFallback(sendBytes, originalFrom, cfg.FallbackSenderEmail);
+            await SendMimeAsync(fallbackBytes, cfg.FallbackSenderEmail, cfg.SaveToSentItems, ct);
+        }
         _logger.Success($"Relayed via {cfg.FallbackSenderEmail}: {originalFrom} → {recips}");
     }
 
@@ -232,6 +273,231 @@ public class GraphMailSender
         }
     }
 
+    private async Task<(bool ok, int status, string error)> TrySendViaDraftAsync(
+        MimeMessage mime, string sender, bool saveToSent, CancellationToken ct)
+    {
+        try
+        {
+            await SendViaDraftAsync(mime, sender, saveToSent, ct);
+            return (true, 202, "");
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode.HasValue)
+        {
+            return (false, (int)ex.StatusCode!, ex.Message);
+        }
+    }
+
+    // ── Draft + send path (for messages > LargeMailThresholdBytes) ────────────
+
+    private async Task SendViaDraftAsync(
+        MimeMessage mime, string senderEmail, bool saveToSent, CancellationToken ct)
+    {
+        var token = await GetAccessTokenAsync(ct);
+
+        // Step 1: create draft with message metadata and body (no attachments yet)
+        var draftJson  = BuildDraftJson(mime);
+        var createUrl  = $"{GraphBase}/users/{Uri.EscapeDataString(senderEmail)}/messages";
+        string draftId;
+        using (var req = new HttpRequestMessage(HttpMethod.Post, createUrl))
+        {
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            req.Content = new StringContent(draftJson, Encoding.UTF8, "application/json");
+            using var resp = await Http.SendAsync(req, ct);
+            var body = await resp.Content.ReadAsStringAsync(ct);
+            if (!resp.IsSuccessStatusCode)
+                throw new HttpRequestException(
+                    $"Graph create draft failed ({(int)resp.StatusCode}): {TryParseGraphError(body) ?? body}",
+                    null, resp.StatusCode);
+            using var doc = JsonDocument.Parse(body);
+            draftId = doc.RootElement.GetProperty("id").GetString()
+                ?? throw new InvalidOperationException("Graph returned draft with no id");
+        }
+        _logger.Debug($"Draft created: {draftId[..Math.Min(16, draftId.Length)]}…");
+
+        // Step 2: add attachments one by one
+        const int smallAttachmentMax = 3 * 1024 * 1024; // 3 MB — above this use upload session
+        var attachments = mime.Attachments.OfType<MimePart>()
+            .Where(p => p.Content != null).ToList();
+
+        foreach (var part in attachments)
+        {
+            using var buf = new MemoryStream();
+            part.Content!.DecodeTo(buf);
+            var data     = buf.ToArray();
+            var filename = part.FileName ?? "attachment.bin";
+            var mimeType = part.ContentType.MimeType;
+
+            if (data.Length <= smallAttachmentMax)
+            {
+                var payload = new Dictionary<string, object>
+                {
+                    ["@odata.type"]  = "#microsoft.graph.fileAttachment",
+                    ["name"]         = filename,
+                    ["contentType"]  = mimeType,
+                    ["contentBytes"] = Convert.ToBase64String(data)
+                };
+                var attUrl = $"{GraphBase}/users/{Uri.EscapeDataString(senderEmail)}/messages/{draftId}/attachments";
+                using var req = new HttpRequestMessage(HttpMethod.Post, attUrl);
+                req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+                req.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                using var resp = await Http.SendAsync(req, ct);
+                if (!resp.IsSuccessStatusCode)
+                {
+                    var err = TryParseGraphError(await resp.Content.ReadAsStringAsync(ct));
+                    throw new HttpRequestException(
+                        $"Graph add attachment '{filename}' failed ({(int)resp.StatusCode}): {err}",
+                        null, resp.StatusCode);
+                }
+                _logger.Debug($"Attachment added inline: {filename} ({data.Length / 1024.0:F1} KB)");
+            }
+            else
+            {
+                await AddLargeAttachmentViaDraftAsync(token, senderEmail, draftId, filename, mimeType, data, ct);
+            }
+        }
+
+        // Step 3: send the draft
+        var sendUrl = $"{GraphBase}/users/{Uri.EscapeDataString(senderEmail)}/messages/{draftId}/send";
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Post, sendUrl);
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            // Empty body required — Graph 400s without a content-type
+            req.Content = new StringContent("{}", Encoding.UTF8, "application/json");
+            using var resp = await Http.SendAsync(req, ct);
+
+            if (resp.IsSuccessStatusCode) return;
+
+            if (resp.StatusCode == System.Net.HttpStatusCode.TooManyRequests && attempt == 0)
+            {
+                var retryAfter = (int)(resp.Headers.RetryAfter?.Delta?.TotalSeconds ?? 30);
+                _logger.Warning($"Graph throttled on draft send — retrying in {retryAfter}s");
+                await Task.Delay(TimeSpan.FromSeconds(retryAfter), ct);
+                continue;
+            }
+
+            var body = await resp.Content.ReadAsStringAsync(ct);
+            _logger.Debug($"Graph draft send {(int)resp.StatusCode} full response: {body}");
+            var msg = TryParseGraphError(body) ?? body;
+
+            if (resp.StatusCode is System.Net.HttpStatusCode.ServiceUnavailable
+                                or System.Net.HttpStatusCode.GatewayTimeout)
+                throw new TransientGraphException(
+                    $"Graph temporarily unavailable ({(int)resp.StatusCode}): {msg}");
+
+            throw new HttpRequestException(
+                $"Graph draft send failed ({(int)resp.StatusCode}): {msg}",
+                null, resp.StatusCode);
+        }
+    }
+
+    private async Task AddLargeAttachmentViaDraftAsync(
+        string token, string senderEmail, string messageId,
+        string filename, string mimeType, byte[] data, CancellationToken ct)
+    {
+        // Create upload session
+        var sessionUrl = $"{GraphBase}/users/{Uri.EscapeDataString(senderEmail)}/messages/{messageId}/attachments/createUploadSession";
+        var sessionPayload = new Dictionary<string, object>
+        {
+            ["AttachmentItem"] = new Dictionary<string, object>
+            {
+                ["attachmentType"] = "file",
+                ["name"]           = filename,
+                ["size"]           = data.Length
+            }
+        };
+        string uploadUrl;
+        using (var req = new HttpRequestMessage(HttpMethod.Post, sessionUrl))
+        {
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            req.Content = new StringContent(JsonSerializer.Serialize(sessionPayload), Encoding.UTF8, "application/json");
+            using var resp = await Http.SendAsync(req, ct);
+            var body = await resp.Content.ReadAsStringAsync(ct);
+            if (!resp.IsSuccessStatusCode)
+                throw new HttpRequestException(
+                    $"Graph createUploadSession for '{filename}' failed ({(int)resp.StatusCode}): {TryParseGraphError(body) ?? body}",
+                    null, resp.StatusCode);
+            using var doc = JsonDocument.Parse(body);
+            uploadUrl = doc.RootElement.GetProperty("uploadUrl").GetString()
+                ?? throw new InvalidOperationException("No uploadUrl in createUploadSession response");
+        }
+
+        // Upload in 5 MB chunks (same size as GraphFileStorer)
+        const int chunkSize = 5 * 1024 * 1024;
+        int offset = 0;
+        while (offset < data.Length)
+        {
+            var end   = Math.Min(offset + chunkSize, data.Length) - 1;
+            var chunk = data[offset..(end + 1)];
+
+            using var req = new HttpRequestMessage(HttpMethod.Put, uploadUrl);
+            req.Content = new ByteArrayContent(chunk);
+            req.Content.Headers.ContentRange = new ContentRangeHeaderValue(offset, end, data.Length);
+            req.Content.Headers.ContentLength = chunk.Length;
+
+            using var resp = await Http.SendAsync(req, ct);
+            if (!resp.IsSuccessStatusCode
+                && resp.StatusCode != System.Net.HttpStatusCode.Created)
+            {
+                var err = TryParseGraphError(await resp.Content.ReadAsStringAsync(ct));
+                throw new HttpRequestException(
+                    $"Attachment upload chunk failed ({(int)resp.StatusCode}): {err}",
+                    null, resp.StatusCode);
+            }
+            offset += chunk.Length;
+        }
+        _logger.Debug($"Large attachment uploaded via session: {filename} ({data.Length / 1024.0:F1} KB)");
+    }
+
+    private static string BuildDraftJson(MimeMessage mime)
+    {
+        static List<object> ToRecipList(IEnumerable<MailboxAddress> mailboxes) =>
+            mailboxes.Select(m => (object)new Dictionary<string, object>
+            {
+                ["emailAddress"] = new Dictionary<string, string>
+                {
+                    ["address"] = m.Address,
+                    ["name"]    = string.IsNullOrWhiteSpace(m.Name) ? m.Address : m.Name
+                }
+            }).ToList();
+
+        bool isHtml  = !string.IsNullOrEmpty(mime.HtmlBody);
+        var bodyText = isHtml ? mime.HtmlBody! : (mime.TextBody ?? "");
+
+        var msg = new Dictionary<string, object>
+        {
+            ["subject"] = mime.Subject ?? "",
+            ["body"] = new Dictionary<string, string>
+            {
+                ["contentType"] = isHtml ? "HTML" : "Text",
+                ["content"]     = bodyText
+            },
+            ["toRecipients"] = ToRecipList(mime.To.Mailboxes)
+        };
+
+        var cc      = ToRecipList(mime.Cc.Mailboxes);
+        var bcc     = ToRecipList(mime.Bcc.Mailboxes);
+        var replyTo = ToRecipList(mime.ReplyTo.Mailboxes);
+
+        if (cc.Count > 0)      msg["ccRecipients"]  = cc;
+        if (bcc.Count > 0)     msg["bccRecipients"] = bcc;
+        if (replyTo.Count > 0) msg["replyTo"]       = replyTo;
+
+        var fromMailbox = mime.From.Mailboxes.FirstOrDefault();
+        if (fromMailbox != null)
+            msg["from"] = new Dictionary<string, object>
+            {
+                ["emailAddress"] = new Dictionary<string, string>
+                {
+                    ["address"] = fromMailbox.Address,
+                    ["name"]    = string.IsNullOrWhiteSpace(fromMailbox.Name)
+                                  ? fromMailbox.Address : fromMailbox.Name
+                }
+            };
+
+        return JsonSerializer.Serialize(msg);
+    }
+
     /// <summary>True when the Graph error indicates the sender address has no mailbox in this tenant.</summary>
     private static bool IsNoMailboxError(string graphError)
     {
@@ -241,7 +507,8 @@ public class GraphMailSender
             || e.Contains("ResourceNotFound", StringComparison.OrdinalIgnoreCase)
             || e.Contains("does not exist in the tenant", StringComparison.OrdinalIgnoreCase)
             || e.Contains("not in the tenant", StringComparison.OrdinalIgnoreCase)
-            || e.Contains("InvalidUser", StringComparison.OrdinalIgnoreCase);
+            || e.Contains("InvalidUser", StringComparison.OrdinalIgnoreCase)
+            || e.Contains("Access is denied", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

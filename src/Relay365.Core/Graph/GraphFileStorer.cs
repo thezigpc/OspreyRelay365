@@ -87,8 +87,9 @@ public class GraphFileStorer
         var rawPath  = string.IsNullOrWhiteSpace(decision.FolderPath) ? "/EmailRelay" : decision.FolderPath;
         var basePath = PathVariableResolver.ResolvePath(rawPath, varCtx, subjectDelim);
 
-        // Resolve the drive ID
-        var driveId = await ResolveDriveIdAsync(decision, ct);
+        // Resolve the drive ID — log which UPN/drive is being targeted
+        var (driveId, resolvedUpn) = await ResolveDriveIdWithUpnAsync(decision, ct);
+        _logger.Info($"Drive resolved: UPN={resolvedUpn ?? "(SharePoint)"} driveId={driveId[..Math.Min(12, driveId.Length)]}…");
 
         // Optional per-email subfolder
         if (decision.UsePerEmailSubfolder)
@@ -120,9 +121,17 @@ public class GraphFileStorer
         var hasTemplate  = !string.IsNullOrWhiteSpace(decision.FilenameTemplate);
 
         // ── Save attachments ──────────────────────────────────────────────────
-        var attachments = mime.Attachments
+        // Use BodyParts with an explicit IsAttachment check so only parts with
+        // Content-Disposition: attachment are included by default.
+        // When SaveEmbeddedImages is on, also include inline image parts with filenames.
+        var attachments = mime.BodyParts
             .OfType<MimePart>()
             .Where(p => p.Content != null)
+            .Where(p => p.IsAttachment
+                        || (decision.SaveEmbeddedImages
+                            && !string.IsNullOrWhiteSpace(p.FileName)
+                            && string.Equals(p.ContentType?.MediaType, "image",
+                                StringComparison.OrdinalIgnoreCase)))
             .ToList();
 
         if (decision.SaveWhat != SaveWhat.FullEml)
@@ -141,7 +150,7 @@ public class GraphFileStorer
 
                 await UploadFileAsync(driveId, basePath, filename, data, conflictBehavior, ct);
                 savedCount++;
-                _logger.Info($"Stored attachment: {filename} ({data.Length / 1024.0:F1} KB)");
+                _logger.Info($"Stored attachment: {basePath}/{filename} ({data.Length / 1024.0:F1} KB)");
             }
         }
 
@@ -198,19 +207,25 @@ public class GraphFileStorer
     // ── Drive ID resolution ───────────────────────────────────────────────────
 
     public async Task<string> ResolveDriveIdAsync(RouteDecision decision, CancellationToken ct)
+        => (await ResolveDriveIdWithUpnAsync(decision, ct)).DriveId;
+
+    private async Task<(string DriveId, string? Upn)> ResolveDriveIdWithUpnAsync(
+        RouteDecision decision, CancellationToken ct)
     {
-        // Pre-resolved at config time (preferred path)
         if (!string.IsNullOrWhiteSpace(decision.DriveId))
-            return decision.DriveId;
+            return (decision.DriveId, null); // SharePoint: drive pre-resolved, no UPN
 
         if (decision.Type == FileDestinationType.OneDrive
             && !string.IsNullOrWhiteSpace(decision.OneDriveUser))
         {
-            return await GetOneDriveDriveIdAsync(decision.OneDriveUser, ct);
+            var upn = decision.OneDriveUser;
+            var id  = await GetOneDriveDriveIdAsync(upn, ct);
+            return (id, upn);
         }
 
         throw new InvalidOperationException(
-            "Cannot resolve drive ID: no DriveId or OneDriveUser in route decision.");
+            "Cannot resolve drive ID: no DriveId or OneDriveUser in route decision. " +
+            $"Rule destination type={decision.Type}, OneDriveUser='{decision.OneDriveUser}'.");
     }
 
     public async Task<string> GetOneDriveDriveIdAsync(string userUpn, CancellationToken ct)

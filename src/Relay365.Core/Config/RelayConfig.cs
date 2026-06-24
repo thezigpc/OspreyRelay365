@@ -32,6 +32,7 @@ public class RelayConfig
     public NoAttachmentBehavior DefaultNoAttachmentBehavior { get; set; } = NoAttachmentBehavior.SaveAsEml;
     public bool DefaultUsePerEmailSubfolder { get; set; } = false;
     public FromSenderHandling DefaultFromSenderHandling { get; set; } = FromSenderHandling.Ignore;
+    public bool DefaultSaveEmbeddedImages { get; set; } = false;
 
     // ── Global catch-all file destination (when no rule matches in FileStorage/Hybrid) ──
     public string GlobalCatchAllOneDriveUser { get; set; } = "";
