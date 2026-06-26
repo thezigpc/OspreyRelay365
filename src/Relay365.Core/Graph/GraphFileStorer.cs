@@ -204,6 +204,72 @@ public class GraphFileStorer
             $"Stored {savedCount} item(s) from {mimeFrom} → drive:{driveId} {basePath}");
     }
 
+    // ── FTP direct upload ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Stores a raw file (not from email) to OneDrive or SharePoint.
+    /// Called by the FTP bridge on STOR command completion.
+    /// </summary>
+    public async Task StoreRawFileAsync(
+        string originalFilename,
+        byte[] data,
+        FtpRouteDecision decision,
+        PathVariableContext varCtx,
+        CancellationToken ct = default)
+    {
+        var cfg = _configManager.Config;
+
+        // Resolve drive ID
+        string driveId;
+        string? resolvedUpn = null;
+
+        if (!string.IsNullOrWhiteSpace(decision.DriveId))
+        {
+            driveId = decision.DriveId;
+        }
+        else if (decision.DestinationType == FileDestinationType.OneDrive)
+        {
+            // Explicit UPN from rule, or fall back to FTP username (must be UPN-form: user@domain)
+            resolvedUpn = !string.IsNullOrWhiteSpace(decision.OneDriveUser)
+                ? decision.OneDriveUser
+                : varCtx.Username;
+
+            if (string.IsNullOrWhiteSpace(resolvedUpn))
+                throw new InvalidOperationException(
+                    $"Cannot resolve OneDrive user: rule has no OneDriveUser and FTP username is empty. Source: {decision.MatchSource}");
+
+            driveId = await GetOneDriveDriveIdAsync(resolvedUpn, ct);
+        }
+        else
+        {
+            throw new InvalidOperationException(
+                $"FTP route has no DriveId. Source: {decision.MatchSource}");
+        }
+
+        _logger.Info($"FTP upload: UPN={resolvedUpn ?? "(SharePoint)"} " +
+                     $"driveId={driveId[..Math.Min(12, driveId.Length)]}…");
+
+        var rawPath    = string.IsNullOrWhiteSpace(decision.FolderPath) ? "/FtpRelay" : decision.FolderPath;
+        var folderPath = PathVariableResolver.ResolvePath(rawPath, varCtx);
+
+        if (cfg.CreateMissingFolders)
+            await EnsureFolderPathAsync(driveId, folderPath, ct);
+
+        var conflictBehavior = cfg.FileConflictBehavior switch
+        {
+            FileConflictBehavior.Replace => "replace",
+            FileConflictBehavior.Fail    => "fail",
+            _                            => "rename"
+        };
+
+        var filename = !string.IsNullOrWhiteSpace(decision.FilenameTemplate)
+            ? PathVariableResolver.ResolveFilename(decision.FilenameTemplate, varCtx, originalFilename)
+            : SanitizeFilename(originalFilename);
+
+        await UploadFileAsync(driveId, folderPath, filename, data, conflictBehavior, ct);
+        _logger.Success($"FTP stored: {folderPath}/{filename} ({data.Length / 1024.0:F1} KB)");
+    }
+
     // ── Drive ID resolution ───────────────────────────────────────────────────
 
     public async Task<string> ResolveDriveIdAsync(RouteDecision decision, CancellationToken ct)

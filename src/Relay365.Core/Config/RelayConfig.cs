@@ -74,6 +74,22 @@ public class RelayConfig
     /// <summary>Legacy — read only for migration from v0.1.3 and earlier configs.</summary>
     public List<RecipientFileRule> FileRules { get; set; } = new();
 
+    // ── FTP bridge ────────────────────────────────────────────────────────────
+    public bool FtpEnabled { get; set; } = false;
+    /// <summary>When true, any username and password is accepted — no user list required.</summary>
+    public bool FtpAcceptAnyLogin { get; set; } = false;
+    public int FtpPort { get; set; } = 2121;
+    public string FtpBindAddress { get; set; } = "0.0.0.0";
+    /// <summary>When true, FTPS (explicit TLS via AUTH TLS) is offered. Requires a certificate.</summary>
+    public bool FtpTlsEnabled { get; set; } = false;
+    public string FtpCertificatePath { get; set; } = "";
+    public string FtpCertificatePasswordEncrypted { get; set; } = "";
+    [JsonIgnore] public string FtpCertificatePassword { get; set; } = "";
+    public int FtpPassivePortMin { get; set; } = 50000;
+    public int FtpPassivePortMax { get; set; } = 50100;
+    public List<FtpUserConfig> FtpUsers { get; set; } = new();
+    public List<FtpRoutingRule> FtpRules { get; set; } = new();
+
     // ── Diagnostics ───────────────────────────────────────────────────────────
     /// <summary>When true, verbose debug entries are written to relay-debug.log and shown in the UI.</summary>
     public bool DebugMode { get; set; } = false;

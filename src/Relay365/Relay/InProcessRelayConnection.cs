@@ -1,4 +1,5 @@
 using Relay365.Core.Config;
+using Relay365.Core.Ftp;
 using Relay365.Core.Graph;
 using Relay365.Core.Logging;
 using Relay365.Core.Routing;
@@ -7,7 +8,7 @@ using Relay365.Core.Smtp;
 namespace Relay365.Relay;
 
 /// <summary>
-/// Runs the SMTP relay server inside the GUI process.
+/// Runs the SMTP relay server (and optionally the FTP bridge) inside the GUI process.
 /// Used when no Windows Service is installed.
 /// </summary>
 public sealed class InProcessRelayConnection : IRelayConnection
@@ -15,6 +16,7 @@ public sealed class InProcessRelayConnection : IRelayConnection
     private readonly ConfigManager _config;
     private readonly RelayLogger _logger;
     private SmtpRelayServer? _server;
+    private FtpRelayServer?  _ftpServer;
 
     public bool IsRunning => _server?.IsRunning == true;
 
@@ -47,6 +49,13 @@ public sealed class InProcessRelayConnection : IRelayConnection
 
         _server = new SmtpRelayServer(processor, _logger);
         _server.Start(cfg.RelayPort, cfg.BindAddress, (long)cfg.MaxMessageSizeMb * 1024 * 1024);
+
+        if (cfg.FtpEnabled)
+        {
+            _ftpServer = new FtpRelayServer(_config, fileStorer, _logger);
+            _ftpServer.Start(cfg.FtpPort, cfg.FtpBindAddress);
+        }
+
         return Task.CompletedTask;
     }
 
@@ -54,8 +63,14 @@ public sealed class InProcessRelayConnection : IRelayConnection
     {
         _server?.Stop();
         _server = null;
+        _ftpServer?.Stop();
+        _ftpServer = null;
         return Task.CompletedTask;
     }
 
-    public void Dispose() => _server?.Stop();
+    public void Dispose()
+    {
+        _server?.Stop();
+        _ftpServer?.Stop();
+    }
 }

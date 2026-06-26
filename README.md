@@ -1,6 +1,6 @@
 # Osprey Relay for M365
 
-**Osprey Relay for M365** is a lightweight Windows SMTP relay that accepts email from any device on your network — printers, copiers, line-of-business apps, monitoring systems — and delivers it through **Microsoft 365 via the Graph API**, without requiring legacy SMTP AUTH or per-device licences.
+**Osprey Relay for M365** is a lightweight Windows relay that accepts email and file uploads from any device on your network — printers, copiers, scanners, line-of-business apps, monitoring systems — and delivers them through **Microsoft 365 via the Graph API**, without requiring legacy SMTP AUTH or per-device licences.
 
 > Part of the **Osprey Relay** product family.
 
@@ -10,7 +10,7 @@
 
 Microsoft 365 deprecated basic SMTP AUTH for many tenants. Devices that relied on it (MFPs, legacy apps, monitoring tools) stopped being able to send email. The typical workarounds — direct send, shared mailboxes, third-party relays — all have drawbacks.
 
-Osprey Relay for M365 runs locally as a Windows Service or desktop app, presents a plain SMTP listener to your devices, and uses a registered Azure AD application to deliver mail through Graph — no per-seat licences, no open relay, no cloud subscription.
+Osprey Relay for M365 runs locally as a Windows Service or desktop app, presents plain SMTP and FTP listeners to your devices, and uses a registered Azure AD application to deliver mail and files through Graph — no per-seat licences, no open relay, no cloud subscription.
 
 ---
 
@@ -18,8 +18,9 @@ Osprey Relay for M365 runs locally as a Windows Service or desktop app, presents
 
 - **SMTP listener** on a configurable port (default 2525); supports optional SMTP AUTH
 - **Microsoft 365 delivery** via Microsoft Graph — small messages use `sendMail`; messages over 3.5 MB automatically switch to a draft-and-send path with chunked attachment upload, handling large files up to the Graph API limit
+- **FTP bridge** — accepts FTP uploads from copiers, scanners, and legacy devices (default port 2121, passive mode only); routes uploaded files directly to OneDrive or SharePoint via the same path-variable rules engine; per-device credentials or accept-any-login for trusted LAN deployments
 - **Flexible routing rules** — match by sender address (regex), recipient address (exact or regex), recipient domain suffix, or email subject (regex); five match modes in total
-- **OneDrive / SharePoint file storage** — save attachments directly to a drive path with rich `%variable%` filename templates; per-rule option to also save embedded inline images
+- **OneDrive / SharePoint file storage** — save attachments directly to a drive path with rich `%variable%` filename and folder templates; per-rule option to also save embedded inline images
 - **Suffix domain routing** — catch all mail for `*.yourdomain.com` subdomains and route accordingly
 - **Smarthost routing rule** — route specific senders or domains directly to an SMTP smarthost (intentional, not just failover); per-rule or global smarthost config
 - **Suffix strip / delivery override** — strip the suffix segment from the recipient address before delivery, or redirect to a completely different address; optional To: header rewrite for smarthost routes
@@ -75,14 +76,14 @@ The required Graph **application permissions** (not Delegated) depend on which f
 |---|---|
 | `Mail.Send` | Always — email relay via Exchange Online |
 | `Mail.ReadWrite` | Large file relay — messages over 3.5 MB (creates and sends drafts) |
-| `Files.ReadWrite.All` | File routing rules targeting **OneDrive** |
-| `Sites.ReadWrite.All` | File routing rules targeting **SharePoint** |
+| `Files.ReadWrite.All` | File routing rules or FTP bridge targeting **OneDrive** |
+| `Sites.ReadWrite.All` | File routing rules or FTP bridge targeting **SharePoint** |
 
 All permissions require **admin consent** in your Azure AD tenant.
 
-> **Upgrading from an earlier version:** If you already have an app registration from a previous release, open the Setup Wizard and click **Update Permissions**. The wizard will add any missing permissions (such as `Mail.ReadWrite` added in v0.1.7) to your existing registration without requiring you to re-create it.
+> **Upgrading from an earlier version:** If you already have an app registration from a previous release, open the Setup Wizard and click **Update Permissions**. The wizard will add any missing permissions to your existing registration without requiring you to re-create it.
 
-> **Scoping SharePoint access:** `Sites.ReadWrite.All` grants the registered app read/write access to every site collection in your tenant. To restrict delivery to specific sites only, use the `Sites.Selected` permission instead and grant per-site access via the SharePoint Admin Centre or PowerShell (`Grant-PnPAzureADAppSitePermission`). Support for managing site access through **security groups** directly within Osprey Relay is planned for a future release.
+> **Scoping SharePoint access:** `Sites.ReadWrite.All` grants the registered app read/write access to every site collection in your tenant. To restrict delivery to specific sites only, use the `Sites.Selected` permission instead and grant per-site access via the SharePoint Admin Centre or PowerShell (`Grant-PnPAzureADAppSitePermission`).
 
 ### 3. Configure — Relay Settings
 
@@ -98,19 +99,62 @@ Click **Settings** to set:
 
 Use **Rules** to define what happens to each message. Rules are evaluated in order — the first match wins. If no rule matches, the message is delivered using the configured fallback sender.
 
+### 5. Configure — FTP Bridge (v0.1.8+)
+
+Click **FTP Bridge** to configure the FTP listener for scanners, copiers, and legacy devices that speak FTP but not SMTP.
+
+#### General settings
+
+| Setting | Default | Notes |
+|---|---|---|
+| Enable FTP bridge | Off | Starts the FTP listener alongside SMTP when the relay is running |
+| Accept any login | Off | When on, any username/password is accepted — no user list required; suitable for trusted LAN-only deployments |
+| Port | 2121 | Port 21 requires elevated privileges on Windows; 2121 avoids that |
+| Bind address | 0.0.0.0 | Restrict to a specific NIC if needed |
+| Passive ports | 50000–50100 | Range must be open in your firewall for data connections |
+
+#### Users
+
+Add one entry per device. Each entry has a username, a password (stored DPAPI-encrypted), and an optional **"Accept any password"** toggle per user — useful for devices that send fixed but non-configurable credentials.
+
+If **Accept any login** is on at the global level, the Users list is bypassed entirely.
+
+#### Rules
+
+FTP routing rules work similarly to email routing rules:
+
+| Field | Purpose |
+|---|---|
+| Virtual path prefix | The FTP directory the device uploads into (e.g. `/Invoices`). Use `/` to match all paths. Longest prefix wins. |
+| Username | Restrict this rule to a specific FTP user. Leave blank to match any authenticated user. |
+| Destination | OneDrive or SharePoint |
+| OneDrive user UPN | The mailbox whose OneDrive receives the file. Leave blank to resolve automatically from the FTP login username — the username must then be in UPN form (`user@domain.com`). |
+| Folder path | Destination folder. Supports `%username%`, `%date%`, `%datetime%`, `%ftppath%`. |
+| Filename template | Optional rename template. Supports `%filename%`, `%date%`, `%username%`. Blank = keep original filename. |
+
+**Match priority:** user-specific rules beat wildcard rules; among rules of the same type, the longest virtual path prefix wins.
+
+**Typical minimal setup:**
+1. Add one FTP user (the credentials configured on the device), or enable **Accept any login**.
+2. Add one rule: virtual path `/`, username blank, OneDrive destination, folder path `/Scans/%date%`.
+3. Point the device's FTP settings to the relay server IP, port 2121.
+
 ---
 
 ## Architecture
 
 ```
 Device / App
-    │  SMTP (port 2525)
-    ▼
+    │  SMTP (port 2525)          FTP device / MFP
+    │                                 │  FTP (port 2121)
+    ▼                                 ▼
 Osprey Relay for M365
     ├── SmtpRelayServer      — accepts SMTP connections
-    ├── RoutingEngine        — evaluates routing rules (5 match modes)
+    ├── FtpRelayServer       — accepts FTP connections (passive mode)
+    ├── RoutingEngine        — evaluates SMTP routing rules (5 match modes)
+    ├── FtpFileRouter        — evaluates FTP routing rules (path + username)
     ├── GraphMailSender      — delivers via Microsoft Graph (sendMail / draft+send)
-    ├── GraphFileStorer      — saves attachments to OneDrive / SharePoint
+    ├── GraphFileStorer      — saves files to OneDrive / SharePoint
     └── SmtpSmarthostSender  — direct smarthost delivery or Graph failover
 ```
 

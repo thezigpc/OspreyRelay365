@@ -28,4 +28,8 @@ public record PathVariableContext
     // ── Regex capture groups ──────────────────────────────────────────────────
     // Named groups: key = group name. Numbered groups: key = "match1", "match2", etc.
     public Dictionary<string, string> RegexCaptures { get; init; } = new();
+
+    // ── FTP context (populated by FtpSession; empty for email routes) ─────────
+    public string Username { get; init; } = "";   // FTP login username → %username%
+    public string FtpPath  { get; init; } = "";   // virtual working directory at STOR → %ftppath%
 }

@@ -49,6 +49,13 @@ public class ConfigManager
         if (!string.IsNullOrEmpty(Config.SmarthostPasswordEncrypted))
             Config.SmarthostPassword = Decrypt(Config.SmarthostPasswordEncrypted);
 
+        if (!string.IsNullOrEmpty(Config.FtpCertificatePasswordEncrypted))
+            Config.FtpCertificatePassword = Decrypt(Config.FtpCertificatePasswordEncrypted);
+
+        foreach (var user in Config.FtpUsers)
+            if (!string.IsNullOrEmpty(user.PasswordEncrypted))
+                user.Password = Decrypt(user.PasswordEncrypted);
+
         foreach (var rule in Config.Rules)
             if (!string.IsNullOrEmpty(rule.SmarthostOverridePasswordEncrypted))
                 rule.SmarthostOverridePassword = Decrypt(rule.SmarthostOverridePasswordEncrypted);
@@ -85,6 +92,13 @@ public class ConfigManager
 
         if (!string.IsNullOrEmpty(config.SmarthostPassword))
             config.SmarthostPasswordEncrypted = Encrypt(config.SmarthostPassword);
+
+        if (!string.IsNullOrEmpty(config.FtpCertificatePassword))
+            config.FtpCertificatePasswordEncrypted = Encrypt(config.FtpCertificatePassword);
+
+        foreach (var user in config.FtpUsers)
+            if (!string.IsNullOrEmpty(user.Password))
+                user.PasswordEncrypted = Encrypt(user.Password);
 
         foreach (var rule in config.Rules)
             if (!string.IsNullOrEmpty(rule.SmarthostOverridePassword))

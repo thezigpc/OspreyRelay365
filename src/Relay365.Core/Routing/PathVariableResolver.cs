@@ -105,6 +105,8 @@ public static class PathVariableResolver
         t = ReplaceInsensitive(t, "%subject%",       SanitizeValue(ctx.Subject));
         t = ReplaceInsensitive(t, "%date%",          ctx.Date);
         t = ReplaceInsensitive(t, "%datetime%",      ctx.DateTime);
+        t = ReplaceInsensitive(t, "%username%",      SanitizeValue(ctx.Username));
+        t = ReplaceInsensitive(t, "%ftppath%",       SanitizeValue(ctx.FtpPath));
 
         // Indexed subject access %subject[n]%
         t = ResolveIndexedSubject(t, ctx.Subject, subjectDelimiter);

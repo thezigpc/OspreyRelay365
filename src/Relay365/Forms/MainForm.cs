@@ -28,6 +28,7 @@ public class MainForm : Form
     private Button _btnRouting = null!;
     private Button _btnFileRules = null!;
     private Button _btnUnrouted = null!;
+    private Button _btnFtpBridge = null!;
     private Button _btnServiceInstall = null!;
     private Button _btnServiceStart = null!;
     private Button _btnOpenLog = null!;
@@ -135,6 +136,7 @@ public class MainForm : Form
         _btnRouting        = ToolBtn("Email Routes…");
         _btnFileRules      = ToolBtn("Rules…");
         _btnUnrouted       = ToolBtn("Unrouted…");
+        _btnFtpBridge      = ToolBtn("FTP Bridge…");
         _btnServiceInstall = ToolBtn("Install Service");
         _btnServiceStart   = ToolBtn("Start Service");
         _btnOpenLog        = ToolBtn("Open Log Folder");
@@ -147,6 +149,7 @@ public class MainForm : Form
         _btnRouting.Click        += (_, _) => OpenRoutingRules();
         _btnFileRules.Click      += (_, _) => OpenFileRules();
         _btnUnrouted.Click       += (_, _) => OpenUnroutedFolder();
+        _btnFtpBridge.Click      += (_, _) => OpenFtpBridge();
         _btnServiceInstall.Click += (_, _) => ToggleServiceInstall();
         _btnServiceStart.Click   += (_, _) => ToggleServiceRunning();
         _btnOpenLog.Click        += (_, _) =>
@@ -162,7 +165,7 @@ public class MainForm : Form
         });
         row2.Controls.AddRange(new Control[]
         {
-            _btnServiceInstall, _btnServiceStart, _btnOpenLog, _btnTestSend, _btnDebugMode
+            _btnFtpBridge, _btnServiceInstall, _btnServiceStart, _btnOpenLog, _btnTestSend, _btnDebugMode
         });
         pnlTools.Controls.Add(row1);
         pnlTools.Controls.Add(row2);
@@ -363,6 +366,17 @@ public class MainForm : Form
         Process.Start("explorer.exe", dir);
     }
 
+    private void OpenFtpBridge()
+    {
+        using var form = new FtpBridgeForm(_configManager, _logger);
+        if (form.ShowDialog(this) == DialogResult.OK && _connection.IsRunning)
+        {
+            StopRelay();
+            _configManager.Load();
+            StartRelay();
+        }
+    }
+
     private void OpenTestSend()
     {
         using var form = new TestSendForm(_configManager, _logger);
@@ -496,13 +510,14 @@ public class MainForm : Form
         // Disable Start in in-process mode until credentials are configured
         _btnStartStop.Enabled = svcMode || cfg.IsConfigured;
 
+        var ftpTag = cfg.FtpEnabled ? $"  ·  FTP:{cfg.FtpPort}" : "";
         _lblDetails.Text = running
-            ? $"Port {cfg.RelayPort}  ·  Max {cfg.MaxMessageSizeMb} MB  ·  " +
+            ? $"SMTP:{cfg.RelayPort}{ftpTag}  ·  Max {cfg.MaxMessageSizeMb} MB  ·  " +
               $"Fallback: {(string.IsNullOrWhiteSpace(cfg.FallbackSenderEmail) ? "passthrough only" : cfg.FallbackSenderEmail)}  ·  " +
               $"Tenant: {cfg.TenantId}" +
               (svcMode ? "  ·  [Windows Service]" : "")
             : cfg.IsConfigured
-                ? $"Configured  ·  Port: {cfg.RelayPort}  ·  Tenant: {cfg.TenantId}" +
+                ? $"Configured  ·  SMTP:{cfg.RelayPort}{ftpTag}  ·  Tenant: {cfg.TenantId}" +
                   (svcMode ? "  ·  [Windows Service]" : "")
                 : "Not configured — click Configure App, then Settings";
     }
