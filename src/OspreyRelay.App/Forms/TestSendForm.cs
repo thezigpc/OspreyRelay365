@@ -70,7 +70,7 @@ public class TestSendForm : Form
             Location = new Point(0, y), Width = 520, Height = 100,
             Multiline = true, ScrollBars = ScrollBars.Vertical,
             Font = new Font("Segoe UI", 9),
-            Text = "This is a test email from 365 Relay."
+            Text = "This is a test email from Osprey Relay for M365."
         };
         scroll.Controls.Add(_txtBody);
         y += 108;
@@ -202,7 +202,7 @@ public class TestSendForm : Form
         _txtTo.Text      = string.IsNullOrWhiteSpace(cfg.FallbackSenderEmail)
                            ? "recipient@yourdomain.com" : cfg.FallbackSenderEmail;
         _txtSubject.Text = "Test Relay Usage";
-        _txtBody.Text    = "This is a test email from 365 Relay.";
+        _txtBody.Text    = "This is a test email from Osprey Relay for M365.";
     }
 
     // ── Attachment helpers ────────────────────────────────────────────────────

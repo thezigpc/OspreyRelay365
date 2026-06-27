@@ -32,7 +32,7 @@ public class RelayHostedService : IHostedService
         var cfg = _configManager.Config;
         if (!cfg.IsConfigured)
             throw new InvalidOperationException(
-                "365Relay is not configured. Run the desktop app to complete setup first.");
+                "Osprey Relay for M365 is not configured. Run the desktop app to complete setup first.");
 
         _server.Start(cfg.RelayPort, cfg.BindAddress, (long)cfg.MaxMessageSizeMb * 1024 * 1024);
         return Task.CompletedTask;

@@ -37,7 +37,7 @@ public class SmtpSession
             bufferSize: 4096, leaveOpen: true)
         { NewLine = "\r\n", AutoFlush = true };
 
-        await writer.WriteLineAsync("220 relay.local ESMTP 365Relay");
+        await writer.WriteLineAsync("220 relay.local ESMTP OspreyRelay365");
 
         while (!ct.IsCancellationRequested)
         {

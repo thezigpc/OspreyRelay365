@@ -295,7 +295,7 @@ public class MessageProcessor
         {
             message = new
             {
-                subject = $"365 Relay: Unrouted email from {email.EnvelopeFrom}",
+                subject = $"Osprey Relay: Unrouted email from {email.EnvelopeFrom}",
                 body = new
                 {
                     contentType = "Text",
@@ -342,7 +342,7 @@ public class MessageProcessor
         {
             message = new
             {
-                subject = $"365 Relay: Unrouted email from {email.EnvelopeFrom}",
+                subject = $"Osprey Relay: Unrouted email from {email.EnvelopeFrom}",
                 body = new
                 {
                     contentType = "Text",

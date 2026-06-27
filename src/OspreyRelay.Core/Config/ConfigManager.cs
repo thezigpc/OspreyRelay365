@@ -8,7 +8,7 @@ public class ConfigManager
 {
     private static readonly string ConfigDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-        "365Relay");
+        "OspreyRelay365");
 
     private static readonly string ConfigPath = Path.Combine(ConfigDir, "config.json");
 

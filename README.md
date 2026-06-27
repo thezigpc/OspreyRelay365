@@ -48,20 +48,19 @@ Osprey Relay for M365 runs locally as a Windows Service or desktop app, presents
 
 ### 1. Build / install
 
-Download the latest release from the [Releases](https://github.com/thezigpc/OspreyRelay365/releases) page. Two builds are available:
+Download the latest release from the [Releases](https://github.com/thezigpc/OspreyRelay/releases) page.
 
-| Build | File | Requirement |
-|---|---|---|
-| Self-contained | `Relay365.exe` | No .NET install needed — runs anywhere |
-| Framework-dependent | `Relay365-fdd.exe` | Requires [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) (x64); smaller download |
+The release executable is `OspreyRelay365.exe`. Run it directly as a desktop app, or install it as a Windows Service from within the app.
 
 To build from source:
 
 ```powershell
-dotnet publish src/Relay365/Relay365.csproj -p:PublishProfile=win-x64
+.\publish.ps1
 ```
 
-The output lands in `src\Relay365\publish\`. Run `Relay365.exe` directly, or install as a Windows Service.
+The output lands in `.\publish\OspreyRelay365.exe`.
+
+> **Upgrading from v0.1.8 or earlier:** The configuration folder was renamed from `%ProgramData%\365Relay` to `%ProgramData%\OspreyRelay365`. Rename the folder before launching the new version so your existing settings are preserved.
 
 ### 2. Configure — App Registration
 

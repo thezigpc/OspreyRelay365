@@ -6,8 +6,8 @@ namespace OspreyRelay.App.Services;
 
 public static class WindowsServiceManager
 {
-    public const string ServiceName = "365Relay";
-    private const string ServiceDisplay = "365 Email Relay";
+    public const string ServiceName = "OspreyRelay365";
+    private const string ServiceDisplay = "Osprey Relay for M365";
     private const string ServiceDescription =
         "Routes SMTP email from local devices through Microsoft 365 via the Graph API.";
 

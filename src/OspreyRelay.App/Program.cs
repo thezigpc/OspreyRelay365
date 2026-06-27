@@ -22,7 +22,7 @@ bool serviceMode = WindowsServiceHelpers.IsWindowsService() || args.Contains("--
 if (serviceMode)
 {
     var host = Host.CreateDefaultBuilder(args)
-        .UseWindowsService(opts => opts.ServiceName = "365Relay")
+        .UseWindowsService(opts => opts.ServiceName = "OspreyRelay365")
         .ConfigureServices(services =>
         {
             services.AddSingleton<ConfigManager>();
@@ -40,10 +40,10 @@ if (serviceMode)
 // Named mutex survives until the process exits (or explicitly released).
 // When upgrading to named-pipe IPC, send an "activate" message over the pipe here
 // instead of using FindWindow.
-using var mutex = new Mutex(true, @"Global\365RelayGUI", out bool isFirstInstance);
+using var mutex = new Mutex(true, @"Global\OspreyRelay365GUI", out bool isFirstInstance);
 if (!isFirstInstance)
 {
-    var hwnd = OspreyRelay.App.NativeMethods.FindWindow(null, "365 Email Relay");
+    var hwnd = OspreyRelay.App.NativeMethods.FindWindow(null, "Osprey Relay for M365");
     if (hwnd != IntPtr.Zero)
     {
         OspreyRelay.App.NativeMethods.ShowWindow(hwnd, OspreyRelay.App.NativeMethods.SW_RESTORE);

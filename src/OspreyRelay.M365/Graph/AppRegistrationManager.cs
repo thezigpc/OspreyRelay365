@@ -8,7 +8,7 @@ namespace OspreyRelay.M365.Graph;
 public class AppRegistrationManager
 {
     // Tag applied to every registration we create so we can find them again
-    private const string RelayTag = "365Relay";
+    private const string RelayTag = "OspreyRelay365";
 
     private const string MailSendRoleId         = "b633e1c5-b582-4048-a93e-9f11b44c7e96";
     private const string MailReadWriteRoleId     = "e2a3a72e-5f79-4c64-b1b1-878b674786c6";
@@ -32,7 +32,7 @@ public class AppRegistrationManager
 
     public async Task<List<AppRegistrationInfo>> SearchExistingAsync(CancellationToken ct = default)
     {
-        _logger.Info("Searching for existing 365Relay app registrations…");
+        _logger.Info("Searching for existing OspreyRelay365 app registrations…");
         var results = new List<AppRegistrationInfo>();
 
         // Primary: filter by tag
@@ -242,7 +242,7 @@ public class AppRegistrationManager
             {
                 PasswordCredential = new PasswordCredential
                 {
-                    DisplayName = $"365Relay-{DateTime.UtcNow:yyyyMMdd}",
+                    DisplayName = $"OspreyRelay365-{DateTime.UtcNow:yyyyMMdd}",
                     EndDateTime = DateTimeOffset.UtcNow.AddYears(2)
                 }
             }, cancellationToken: ct) ?? throw new InvalidOperationException("Secret generation returned null.");
