@@ -101,6 +101,8 @@ FTP rules match on virtual path prefix and optional username. Destination is One
 
 Printers, scanners, copiers, and legacy applications speak SMTP and FTP — not the Gmail API or the Drive API. Osprey Relay for Workspace bridges that gap: it accepts standard SMTP and FTP connections from your devices and delivers email through Gmail and files to Google Drive, using a **service account with Domain-Wide Delegation** to act on behalf of your users without storing per-user credentials anywhere on the relay.
 
+The traditional alternative — configuring each device with a Gmail account and an app password — requires disabling MFA for that account or managing app-specific passwords per device. With Osprey Relay for Workspace, MFA stays on for every user, there are no app passwords to manage, and no shared credentials sitting in device firmware.
+
 ### Features
 
 - **Gmail relay** — delivers email via the Gmail API, sending as the original From: address; falls back to a configured sender address if the From address isn't a mailbox in your domain
