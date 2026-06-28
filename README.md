@@ -99,17 +99,17 @@ FTP rules match on virtual path prefix and optional username. Destination is One
 
 ### Why
 
-Google Workspace environments often need to relay email or store files from devices that can't speak the Gmail API directly. Osprey Relay for Workspace uses a **service account with Domain-Wide Delegation** to impersonate any user in your domain — no per-user OAuth flows, no device credentials stored in Google.
-
-Works in hybrid scenarios too: if Gmail is disabled (e.g. Entra ID SSO with Exchange Online as the mail system), disable Gmail relay in Settings → Services and use only Google Drive storage. Smarthost delivery is always available as an email path regardless of which Google services are enabled.
+Printers, scanners, copiers, and legacy applications speak SMTP and FTP — not the Gmail API or the Drive API. Osprey Relay for Workspace bridges that gap: it accepts standard SMTP and FTP connections from your devices and delivers email through Gmail and files to Google Drive, using a **service account with Domain-Wide Delegation** to act on behalf of your users without storing per-user credentials anywhere on the relay.
 
 ### Features
 
-- **Gmail relay** — send email via the Gmail API, impersonating the From: address; falls back to a configured sender if the address isn't a domain mailbox
-- **Google Drive file storage** — route attachments to My Drive or any Shared Drive; folder paths use the same `%variable%` template engine as the M365 product
-- **FTP bridge** — same FTP listener as the M365 product, routing files to Google Drive instead of OneDrive/SharePoint
-- **Service account auth** — JSON key file + Domain-Wide Delegation; no per-user sign-in required
-- **Separate Windows Service** (`OspreyRelayWorkspace`) — config at `%ProgramData%\OspreyRelayWorkspace\`; safe to run alongside Osprey Relay for M365
+- **Gmail relay** — delivers email via the Gmail API, sending as the original From: address; falls back to a configured sender address if the From address isn't a mailbox in your domain
+- **Google Drive file storage** — routes attachments to My Drive or any Shared Drive, into folder paths built from `%variable%` templates resolved at delivery time
+- **FTP bridge** — accepts FTP uploads from copiers and legacy devices and routes files directly to Google Drive via the same rules engine used for email
+- **Service account auth** — a single JSON key file covers all users; no per-user sign-in or OAuth consent required
+- **Flexible routing rules** — match by recipient domain suffix, exact address, or regex on To/From/Subject; five match modes
+- **Smarthost routing** — route specific senders or domains to a direct SMTP smarthost instead of Gmail; always available regardless of which Google services are enabled
+- **Windows Service** — runs as `OspreyRelayWorkspace`; config stored at `%ProgramData%\OspreyRelayWorkspace\`
 
 ### Requirements
 
@@ -117,24 +117,24 @@ Works in hybrid scenarios too: if Gmail is disabled (e.g. Entra ID SSO with Exch
 |---|---|
 | OS | Windows 10 / 11 or Windows Server 2019+ |
 | Runtime | [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) x64 |
-| Google Workspace | Any plan (Gmail relay requires Gmail not disabled for the domain) |
+| Google Workspace | Any plan |
 | Google Cloud | Service account with Domain-Wide Delegation enabled |
 
 ### Getting Started
 
 #### 1. Install
 
-Download `OspreyRelayWorkspace.exe` from the [Releases](https://github.com/thezigpc/OspreyRelay/releases) page.
+Download `OspreyRelayWorkspace.exe` from the [Releases](https://github.com/thezigpc/OspreyRelay/releases) page. Run it directly as a desktop app, or install it as a Windows Service from within the app.
 
 #### 2. Service Account Setup
 
-In the Google Cloud Console:
+In the **Google Cloud Console**:
 
 1. Create a service account
 2. Enable **Domain-Wide Delegation** on the account
 3. Download the **JSON key file** and place it on the relay server
 
-In the **Google Workspace Admin Console** (Security → API Controls → Domain-wide Delegation), grant the service account whichever scopes match your enabled services:
+In the **Google Workspace Admin Console** (Security → API Controls → Domain-wide Delegation), add the service account and grant it whichever OAuth scopes match your enabled services:
 
 | Scope | Required when |
 |---|---|
@@ -143,22 +143,34 @@ In the **Google Workspace Admin Console** (Security → API Controls → Domain-
 
 #### 3. Workspace Setup
 
-Click **Workspace Setup**, browse to the JSON key file, and enter the impersonation email address (typically a domain admin account). Click **Test Connection** — it will verify credentials for whichever services are enabled in Settings → Services.
+Click **Workspace Setup**, browse to the JSON key file, and enter an impersonation email address (any mailbox in your domain). Click **Test Connection** — it will verify credentials for whichever services are enabled in Settings → Services.
 
 #### 4. Settings → Services
 
-Select which Google services this relay will use:
+Choose which Google services this relay should use:
 
-- **Gmail relay** — enable if sending email via Gmail API
-- **Google Drive** — enable if routing files to Drive
+- **Gmail relay** — send email through the Gmail API
+- **Google Drive** — store files and attachments in Drive
 
-Disabling a service greys out its options throughout the UI. If only Drive is needed (e.g. Gmail is disabled in your domain), disable Gmail relay and use Smarthost for email delivery.
+Disabling a service greys it out throughout the UI and removes it from routing options. If you only need file storage, disable Gmail relay and configure a Smarthost for any email delivery.
 
-#### 5. Routing Rules and FTP Bridge
+#### 5. Routing Rules
 
-Work the same way as in the M365 product. Destination options show **Google Drive – My Drive** and **Google Drive – Shared Drive** instead of OneDrive/SharePoint.
+Click **Rules** to define what happens to each message. Rules are evaluated in order — first match wins. File destination options are **Google Drive – My Drive** and **Google Drive – Shared Drive**.
 
 For Shared Drive routing, enter the Shared Drive ID (visible in the URL when browsing the drive in Google Drive) in the rule editor.
+
+#### 6. FTP Bridge
+
+Click **FTP Bridge** to configure the FTP listener for devices that upload via FTP.
+
+| Setting | Default | Notes |
+|---|---|---|
+| Port | 2121 | Port 21 requires elevation; 2121 avoids that |
+| Accept any login | Off | For trusted LAN-only deployments |
+| Passive ports | 50000–50100 | Must be open in your firewall |
+
+FTP rules match on virtual path prefix and optional username. Files are delivered to Google Drive. Folder path supports `%username%`, `%date%`, `%datetime%`, `%ftppath%`.
 
 ---
 
